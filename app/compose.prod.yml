@@ -1,0 +1,15 @@
+services:
+  app-prod:
+    build:
+      dockerfile: Dockerfile.prod
+    environment:
+      - name=value
+    ports:
+      - "5173:443"    # HTTPS only - no HTTP port for production security
+    restart: unless-stopped
+    
+  app-dev:
+    profiles: ["dev"]
+    build: .
+    ports:
+      - "5173:5173"

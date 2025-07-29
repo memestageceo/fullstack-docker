@@ -1,0 +1,53 @@
+# Build stage
+FROM node:alpine AS builder
+
+WORKDIR /home/app
+
+COPY package.json .
+
+RUN npm install -g pnpm
+
+RUN pnpm install
+
+COPY . .
+
+RUN pnpm run build
+
+# Production stage with security hardening
+FROM nginx:alpine
+
+# Create non-root user for nginx
+RUN addgroup -g 1001 -S nginx-user && \
+    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx-user -g nginx-user nginx-user
+
+# Copy built files
+COPY --from=builder /home/app/dist /usr/share/nginx/html
+
+# Copy production nginx config
+COPY nginx.prod.conf /etc/nginx/nginx.conf
+
+# Copy SSL certificates with proper permissions
+COPY ssl-certs/ /etc/nginx/ssl-certs/
+RUN chmod 600 /etc/nginx/ssl-certs/nginx-selfsigned.key && \
+    chmod 644 /etc/nginx/ssl-certs/nginx-selfsigned.crt && \
+    chown -R nginx-user:nginx-user /etc/nginx/ssl-certs/
+
+# Set proper permissions for web files
+RUN chown -R nginx-user:nginx-user /usr/share/nginx/html && \
+    chown -R nginx-user:nginx-user /var/cache/nginx && \
+    chown -R nginx-user:nginx-user /var/log/nginx && \
+    chown -R nginx-user:nginx-user /etc/nginx/conf.d
+
+# Create directories with proper permissions
+RUN touch /var/run/nginx.pid && \
+    chown nginx-user:nginx-user /var/run/nginx.pid
+
+# Remove unnecessary packages to reduce attack surface
+RUN apk del --no-cache wget curl
+
+EXPOSE 443
+
+# Run as non-root user
+USER nginx-user
+
+CMD ["nginx", "-g", "daemon off;"]
